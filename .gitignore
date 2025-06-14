@@ -1,0 +1,13 @@
+.venv/
+.idea/
+__pycache__/
+
+*.py[cod]
+*.pyo
+*.pyd
+
+data/cve_enriched_data.csv
+data_pour_TD_final/alertes
+data_pour_TD_final/Avis
+data_pour_TD_final/first
+data_pour_TD_final/mitre
