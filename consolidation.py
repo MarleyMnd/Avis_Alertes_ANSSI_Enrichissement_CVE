@@ -3,6 +3,7 @@ import pandas as pd
 def build_dataframe(enriched_data):
     print(f"Traitement de {len(enriched_data)} objets enrichis...")
     rows = []
+    print(enriched_data[0])
     for item in enriched_data:
         base_row = {
             "ID ANSSI": item.get("id_anssi"),
