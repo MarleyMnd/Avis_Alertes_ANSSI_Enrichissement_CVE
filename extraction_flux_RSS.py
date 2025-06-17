@@ -1,7 +1,5 @@
 import feedparser
 
-# never used but i am keeping it because it might be useful, not sure now
-
 def extract_flux_rss():
     urls = []
     for flux_type in ["avis", "alerte"]:
