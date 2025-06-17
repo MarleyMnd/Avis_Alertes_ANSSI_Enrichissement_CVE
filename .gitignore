@@ -7,6 +7,7 @@ __pycache__/
 *.pyd
 
 data/cve_enriched_data.csv
+data/cve_enriched_data_local.csv
 data_pour_TD_final/alertes
 data_pour_TD_final/Avis
 data_pour_TD_final/first

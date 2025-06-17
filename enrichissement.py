@@ -1,5 +1,8 @@
 import requests
 import time
+import json
+import os
+import csv
 
 def enrich_cve_data(cve_list):
     enriched_data = []
