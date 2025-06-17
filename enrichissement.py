@@ -1,208 +1,163 @@
 import requests
 import time
-import os
 import json
 
-
-def enrichissement_api_cve():
-    cve_id = "CVE-2023-24488"
-    url = f"https://cveawg.mitre.org/api/cve/{cve_id}"
-    response = requests.get(url)
-    data = response.json()
-
-    # Extraire la description
-    description = data["containers"]["cna"]["descriptions"][0]["value"]
-
-    # Extraire le score CVSS
-    #ATTENTION tous les CVE ne contiennent pas nécessairement ce champ, gérez l’exception,
-    #ou peut etre au lieu de cvssV3_0 c’est cvssV3_1 ou autre clé
-    cvss_score = data["containers"]["cna"]["metrics"][0]["cvssV3_1"]["baseScore"]
-    cwe = "Non disponible"
-    cwe_desc = "Non disponible"
-    problemtype = data["containers"]["cna"].get("problemTypes", {})
-    if problemtype and "descriptions" in problemtype[0]:
-        cwe = problemtype[0]["descriptions"][0].get("cweId", "Non disponible")
-        cwe_desc=problemtype[0]["descriptions"][0].get("description", "Non disponible")
-
-    # Extraire les produits affectés
-    affected = data["containers"]["cna"]["affected"]
-    for product in affected:
-        vendor = product["vendor"]
-        product_name = product["product"]
-        versions = [v["version"] for v in product["versions"] if v["status"] == "affected"]
-        print(f"Éditeur : {vendor}, Produit : {product_name}, Versions : {', '.join(versions)}")
-
-    # Afficher les résultats
-    print(f"CVE : {cve_id}")
-    print(f"Description : {description}")
-    print(f"Score CVSS : {cvss_score}")
-    print(f"Type CWE : {cwe}")
-    print(f"CWE Description : {cwe_desc}")
-
-
-def enrichissement_api_epss():
-    # URL de l'API EPSS pour récupérer la probabilité d'exploitation
-    cve_id = "CVE-2023-46805"
-    url = f"https://api.first.org/data/v1/epss?cve={cve_id}"
-    # Requête GET pour récupérer les données JSON
-    response = requests.get(url)
-    data = response.json()
-    # Extraire le score EPSS
-    epss_data = data.get("data", [])
-    if epss_data:
-        epss_score = epss_data[0]["epss"]
-        print(f"CVE : {cve_id}")
-        print(f"Score EPSS : {epss_score}")
-    else:
-        print(f"Aucun score EPSS trouvé pour {cve_id}")
-
-
-def enrich_cve_data(cve_id):
-    enriched = {
-        "cve_id": cve_id,
-        "description": "Non disponible",
-        "cvss_score": None,
-        "base_severity": "Non disponible",
-        "cwe_id": "Non disponible",
-        "cwe_desc": "Non disponible",
-        "epss_score": None,
-        "vendors": [],
-    }
-
-    # API MITRE
-    try:
-        url_mitre = f"https://cveawg.mitre.org/api/cve/{cve_id}"
-        response = requests.get(url_mitre)
-        data = response.json()
-
-        enriched["description"] = data["containers"]["cna"]["descriptions"][0]["value"]
-
-        metrics = data["containers"]["cna"].get("metrics", [])
-        if metrics:
-            for metric in metrics:
-                if "cvssV3_1" in metric:
-                    enriched["cvss_score"] = metric["cvssV3_1"]["baseScore"]
-                    enriched["base_severity"] = metric["cvssV3_1"]["baseSeverity"]
-                    break
-                elif "cvssV3_0" in metric:
-                    enriched["cvss_score"] = metric["cvssV3_0"]["baseScore"]
-                    enriched["base_severity"] = metric["cvssV3_0"]["baseSeverity"]
-                    break
-
-        problemtype = data["containers"]["cna"].get("problemTypes", [])
-        if problemtype and "descriptions" in problemtype[0]:
-            enriched["cwe_id"] = problemtype[0]["descriptions"][0].get("cweId", "Non disponible")
-            enriched["cwe_desc"] = problemtype[0]["descriptions"][0].get("description", "Non disponible")
-
-        affected = data["containers"]["cna"].get("affected", [])
-        for product in affected:
-            vendor = product.get("vendor", "")
-            product_name = product.get("product", "")
-            versions = [v["version"] for v in product.get("versions", []) if v.get("status") == "affected"]
-            enriched["vendors"].append({"vendor": vendor, "product": product_name, "versions": versions})
-
-    except Exception as e:
-        print(f"[Erreur MITRE] {cve_id}: {e}")
-
-    # API EPSS
-    try:
-        url_epss = f"https://api.first.org/data/v1/epss?cve={cve_id}"
-        response = requests.get(url_epss)
-        epss_data = response.json().get("data", [])
-        if epss_data:
-            enriched["epss_score"] = epss_data[0]["epss"]
-    except Exception as e:
-        print(f"[Erreur EPSS] {cve_id}: {e}")
-
-    time.sleep(0.1) # rate limit
-    return enriched
-
-
-def enrich_all(cve_list):
-    all_data = []
-    total = len(cve_list)
-    for i, cve_id in enumerate(cve_list, start=1):
-        print(f"[{i}/{total}] Enrichissement de {cve_id}...")
-        data = enrich_cve_data(cve_id)
-        all_data.append(data)
-    return all_data
-
-
-def enrich_cve_data_offline(cve_id, mitre_dir="mitre", first_dir="first"):
-    enriched = {
-        "cve_id": cve_id,
-        "description": "Non disponible",
-        "cvss_score": None,
-        "base_severity": "Non disponible",
-        "cwe_id": "Non disponible",
-        "cwe_desc": "Non disponible",
-        "epss_score": None,
-        "vendors": []
-    }
-
-    # Fichier local MITRE
-    mitre_path = os.path.join(mitre_dir, f"{cve_id}.json")
-    if os.path.exists(mitre_path):
-        with open(mitre_path, "r", encoding="utf-8") as f:
-            try:
-                data = json.load(f)
-                enriched["description"] = data["containers"]["cna"]["descriptions"][0]["value"]
-
-                metrics = data["containers"]["cna"].get("metrics", [])
-                for metric in metrics:
-                    if "cvssV3_1" in metric:
-                        enriched["cvss_score"] = metric["cvssV3_1"]["baseScore"]
-                        enriched["base_severity"] = metric["cvssV3_1"]["baseSeverity"]
-                        break
-                    elif "cvssV3_0" in metric:
-                        enriched["cvss_score"] = metric["cvssV3_0"]["baseScore"]
-                        enriched["base_severity"] = metric["cvssV3_0"]["baseSeverity"]
-                        break
-
-                problemtype = data["containers"]["cna"].get("problemTypes", [])
-                if problemtype and "descriptions" in problemtype[0]:
-                    enriched["cwe_id"] = problemtype[0]["descriptions"][0].get("cweId", "Non disponible")
-                    enriched["cwe_desc"] = problemtype[0]["descriptions"][0].get("description", "Non disponible")
-
-                for product in data["containers"]["cna"].get("affected", []):
-                    vendor = product.get("vendor", "")
-                    product_name = product.get("product", "")
-                    versions = [v["version"] for v in product.get("versions", []) if v.get("status") == "affected"]
-                    enriched["vendors"].append({
-                        "vendor": vendor,
-                        "product": product_name,
-                        "versions": versions
-                    })
-            except Exception as e:
-                print(f"Erreur JSON MITRE pour {cve_id}: {e}")
-
-    # Fichier local EPSS
-    first_path = os.path.join(first_dir, f"{cve_id}.json")
-    if os.path.exists(first_path):
-        try:
-            with open(first_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                epss_data = data.get("data", [])
-                if epss_data:
-                    enriched["epss_score"] = epss_data[0]["epss"]
-        except Exception as e:
-            print(f"Erreur JSON EPSS pour {cve_id}: {e}")
-
-    return enriched
-
-
-def enrich_all_offline(cve_infos, mitre_dir="data_pour_TD_final/mitre", first_dir="data_pour_TD_final/first"):
-    all_data = []
-    total = len(cve_infos)
-    for idx, info in enumerate(cve_infos, 1):
-        print(f"[{idx}/{total}] Enrichissement local de {info['cve_id']}...")
-        enriched = enrich_cve_data_offline(info["cve_id"], mitre_dir, first_dir)
-        enriched.update({
-            "id_anssi": info.get("id_anssi"),
-            "title": info.get("title"),
-            "published": info.get("published"),
-            "type": info.get("type"),
-            "link": info.get("link")
+def enrich_cve_data(cve_list):
+    enriched_data = []
+    
+    for cve_item in cve_list:
+        cve_id = cve_item.get("cve_id")
+        if not cve_id:
+            continue
+            
+        print(f"Enriching {cve_id}...")
+        
+        # Initialize with base data
+        enriched_item = cve_item.copy()
+        
+        # Default values
+        enriched_item.update({
+            "description": "Not available",
+            "cvss_score": 0.0,
+            "base_severity": "UNKNOWN",
+            "cwe_id": "Unknown",
+            "cwe_desc": "Unknown",
+            "epss_score": 0.0,
+            "vendors": []
         })
-        all_data.append(enriched)
-    return all_data
+        
+        # Get MITRE data
+        mitre_data = get_mitre_data(cve_id)
+        if mitre_data:
+            enriched_item.update(mitre_data)
+            
+        # Get EPSS score
+        epss_data = get_epss_data(cve_id)
+        if epss_data:
+            enriched_item["epss_score"] = epss_data
+            
+        enriched_data.append(enriched_item)
+        
+        # Avoid rate limiting
+        time.sleep(1)
+        
+    return enriched_data
+
+def get_mitre_data(cve_id):
+    url = f"https://services.nvd.nist.gov/rest/json/cves/2.0?cveId={cve_id}"
+    
+    try:
+        response = requests.get(url, headers={
+            "User-Agent": "CVE-Enrichment-Tool/1.0"
+        })
+        
+        if response.status_code != 200:
+            print(f"Error fetching MITRE data for {cve_id}: {response.status_code}")
+            return None
+            
+        data = response.json()
+        
+        if not data.get("vulnerabilities") or len(data["vulnerabilities"]) == 0:
+            return None
+            
+        vuln = data["vulnerabilities"][0]["cve"]
+        
+        # Extract description
+        description = "Not available"
+        if vuln.get("descriptions"):
+            for desc in vuln["descriptions"]:
+                if desc.get("lang") == "en":
+                    description = desc.get("value", "Not available")
+                    break
+        
+        # Extract CVSS data
+        cvss_score = 0.0
+        base_severity = "UNKNOWN"
+        if vuln.get("metrics", {}).get("cvssMetricV31"):
+            cvss_data = vuln["metrics"]["cvssMetricV31"][0]["cvssData"]
+            cvss_score = cvss_data.get("baseScore", 0.0)
+            base_severity = cvss_data.get("baseSeverity", "UNKNOWN")
+        elif vuln.get("metrics", {}).get("cvssMetricV30"):
+            cvss_data = vuln["metrics"]["cvssMetricV30"][0]["cvssData"]
+            cvss_score = cvss_data.get("baseScore", 0.0)
+            base_severity = cvss_data.get("baseSeverity", "UNKNOWN")
+        elif vuln.get("metrics", {}).get("cvssMetricV2"):
+            cvss_data = vuln["metrics"]["cvssMetricV2"][0]["cvssData"]
+            cvss_score = cvss_data.get("baseScore", 0.0)
+            base_severity = cvss_data.get("baseSeverity", "UNKNOWN")
+        
+        # Extract CWE information
+        cwe_id = "Unknown"
+        cwe_desc = "Unknown"
+        if vuln.get("weaknesses"):
+            for weakness in vuln["weaknesses"]:
+                if weakness.get("description"):
+                    for desc in weakness["description"]:
+                        if desc.get("lang") == "en" and desc.get("value"):
+                            cwe_id = desc.get("value", "Unknown")
+                            cwe_desc = cwe_id  # Using ID as description for now
+                            break
+        
+        # Extract vendor and product information
+        vendors = []
+        if vuln.get("configurations"):
+            for config in vuln["configurations"]:
+                if config.get("nodes"):
+                    for node in config["nodes"]:
+                        if node.get("cpeMatch"):
+                            for cpe in node["cpeMatch"]:
+                                cpe_parts = cpe.get("criteria", "").split(":")
+                                if len(cpe_parts) >= 5:
+                                    vendor = cpe_parts[3]
+                                    product = cpe_parts[4]
+                                    version = cpe_parts[5] if len(cpe_parts) > 5 else "All"
+                                    
+                                    # Check if vendor already exists
+                                    vendor_exists = False
+                                    for v in vendors:
+                                        if v["vendor"] == vendor and v["product"] == product:
+                                            if version not in v["versions"]:
+                                                v["versions"].append(version)
+                                            vendor_exists = True
+                                            break
+                                    
+                                    if not vendor_exists:
+                                        vendors.append({
+                                            "vendor": vendor,
+                                            "product": product,
+                                            "versions": [version]
+                                        })
+        
+        return {
+            "description": description,
+            "cvss_score": cvss_score,
+            "base_severity": base_severity,
+            "cwe_id": cwe_id,
+            "cwe_desc": cwe_desc,
+            "vendors": vendors
+        }
+        
+    except Exception as e:
+        print(f"Error processing MITRE data for {cve_id}: {e}")
+        return None
+
+def get_epss_data(cve_id):
+    url = f"https://api.first.org/data/v1/epss?cve={cve_id}"
+    
+    try:
+        response = requests.get(url)
+        
+        if response.status_code != 200:
+            print(f"Error fetching EPSS data for {cve_id}: {response.status_code}")
+            return 0.0
+            
+        data = response.json()
+        
+        if not data.get("data") or len(data["data"]) == 0:
+            return 0.0
+            
+        return float(data["data"][0].get("epss", 0.0))
+        
+    except Exception as e:
+        print(f"Error processing EPSS data for {cve_id}: {e}")
+        return 0.0
