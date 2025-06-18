@@ -38,7 +38,7 @@ def enrich_cve_data(cve_list):
         enriched_data.append(enriched_item)
         
         # Avoid rate limiting
-        time.sleep(1)
+        time.sleep(2)
         
     return enriched_data
 
