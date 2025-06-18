@@ -66,7 +66,7 @@ def extract_cve_from_local(dossier_avis="data_pour_TD_final/Avis", dossier_alert
     return all_cve
 
 
-def extraire_info_communes(data):
+def extract_data(data):
     """Extrait les champs communs aux avis et alertes"""
     reference = data.get("reference", "")
     title = data.get("title", "")
@@ -85,7 +85,6 @@ def extraire_info_communes(data):
             "vendor": vendor
         })
 
-    # Solution = section content → extraire ## Solution
     content = data.get("content", "")
     solution = ""
     if "## Solution" in content:
@@ -111,13 +110,13 @@ def extraire_info_communes(data):
     }
 
 
-def traiter_fichier(filepath, type_doc):
+def process_folder(filepath, type_doc):
     """Traite un fichier (alerte ou avis)"""
     try:
         with open(filepath, encoding='utf-8') as f:
             data = json.load(f)
 
-        info = extraire_info_communes(data)
+        info = extract_data(data)
         info["type"] = type_doc
         info["date_cloture"] = data.get("closed_at", "") if type_doc == "alerte" else ""
 
@@ -127,19 +126,19 @@ def traiter_fichier(filepath, type_doc):
         return None
 
 
-def parcourir_dossier(dossier, type_doc):
-    """Parcourt tous les fichiers .txt d’un dossier donné"""
-    resultats = []
+def explore_folder(dossier, type_doc):
+    """Parcourt tous les fichiers .txt d’un dossier"""
+    results = []
     for nom_fichier in os.listdir(dossier):
         if nom_fichier.endswith(""):
-            chemin = os.path.join(dossier, nom_fichier)
-            info = traiter_fichier(chemin, type_doc)
+            path = os.path.join(dossier, nom_fichier)
+            info = process_folder(path, type_doc)
             if info:
-                resultats.append(info)
-    return resultats
+                results.append(info)
+    return results
 
 
-def fusionner_et_enregistrer(alertes, avis, chemin_sortie):
+def fusion_save_alertes_avis(alertes, avis, chemin_sortie):
     """Fusionne les deux listes, aplatit les CVE, et écrit un CSV final sans colonne 'cves'"""
     lignes = alertes + avis
 
@@ -163,7 +162,7 @@ def fusionner_et_enregistrer(alertes, avis, chemin_sortie):
                     nouvelle_ligne["cve"] = cve.strip()
                     writer.writerow(nouvelle_ligne)
 
-    # ✅ Supprimer la colonne 'cves' du fichier en la réécrivant sans cette colonne
+    # Supprimer la colonne 'cves' du fichier en la réécrivant sans cette colonne
     colonnes_sans_cves = [col for col in colonnes if col != "cves"]
 
     with open(chemin_sortie, "r", encoding="utf-8") as f:
