@@ -1,4 +1,5 @@
 import os
+import time
 import pandas as pd
 from extraction_flux_RSS import extract_flux_rss
 from extraction_CVE import extract_cve, extract_cve_from_local, explore_folder, fusion_save_alertes_avis
@@ -22,6 +23,17 @@ def main():
     fusion_save_alertes_avis(alertes, avis, path_scrapped_data_csv)
     print(f"Fichier CSV généré (local) : {path_scrapped_data_csv}")
 
+    # Local CVE enrichment
+    print("\n[LOCAL ENRICHMENT] Extracting and enriching local CVEs...")
+    local_cve_data = extract_cve_from_local(folder_avis, folder_alertes)
+    print(f"Extracted {len(local_cve_data)} CVEs from local files.")
+
+    print("Enriching first 15 local CVEs...")
+    enriched_local = enrich_cve_data(local_cve_data[:15])
+    df_local = build_dataframe(enriched_local)
+    df_local.to_csv("data/cve_enriched_data_local.csv", index=False, encoding="utf-8")
+    print("Saved local enriched data to data/cve_enriched_data_local.csv")
+    
     # Scrapping
     print("\nStarting CVE data extraction and enrichment process...")
 
