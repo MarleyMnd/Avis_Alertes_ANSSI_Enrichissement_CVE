@@ -5,6 +5,8 @@ from extraction_flux_RSS import extract_flux_rss
 from extraction_CVE import extract_cve, extract_cve_from_local, explore_folder, fusion_save_alertes_avis
 from enrichissement import enrich_cve_data
 from consolidation import build_dataframe
+from email_alerts import alert_on_critical_cves
+
 
 def main():
     os.makedirs("data", exist_ok=True)
@@ -81,6 +83,9 @@ def main():
     print(f"Saving to {output_file}...")
     df.to_csv(output_file, index=False, encoding="utf-8")
     print(f"Data saved to {output_file}")
+
+    print("Sending email alerts for critical Apache vulnerabilities...")
+    alert_on_critical_cves(enriched_data, "Apache", "destination_team@example.com")
 
     print("Process completed successfully!")
 
